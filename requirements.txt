@@ -1,5 +1,6 @@
-pandas
+pandas~=2.2.3
 opencv-contrib-python
 numpy==1.26.4
 open3d==0.18.0
 matplotlib
+scikit-learn~=1.5.2
