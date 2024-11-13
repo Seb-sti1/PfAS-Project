@@ -1,5 +1,3 @@
-import threading
-import time
 from typing import Union, Iterator, Tuple
 
 import cv2
@@ -8,27 +6,7 @@ import open3d as o3d
 from numpy import ndarray
 
 from load import load_stereo_images
-
-center = None
-
-
-def __show_pcd__(cloud, should_show):
-    global center
-
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(width=800, height=600)
-    vis.add_geometry(cloud)
-    view_control = vis.get_view_control()
-    view_control.set_zoom(0.17)
-    if center is None:
-        center = cloud.get_center() + np.array([-7., 0., 0.])
-    view_control.set_lookat(center)
-
-    while not should_show.is_set():  # Keep running until stop_event is set
-        vis.poll_events()
-        vis.update_renderer()
-        time.sleep(0.01)
-    vis.destroy_window()
+from viz import DynamicO3DWindow
 
 
 def init_stereo(use_sgbm=True) -> Union[cv2.StereoSGBM, cv2.StereoBM]:
@@ -123,6 +101,7 @@ def get_stereo_image_disparity_pcd(sequence: str, stereo: Union[cv2.StereoSGBM, 
 
 def main(sequence):
     stereo = init_stereo(use_sgbm=True)
+    vis = DynamicO3DWindow()
 
     for i, (rec_left, rec_right, disparity, pcd) in enumerate(get_stereo_image_disparity_pcd(sequence, stereo)):
         cv2.imshow("left and right",
@@ -137,15 +116,10 @@ def main(sequence):
 
         cloud = pcd.voxel_down_sample(voxel_size=0.05)
 
-        should_show = threading.Event()
-        pcd_thread = threading.Thread(target=__show_pcd__, args=(cloud, should_show))
-        pcd_thread.start()
-
-        k = cv2.waitKey(0)
-        should_show.set()
-        pcd_thread.join()
-        if k & 0xFF == ord('q'):
+        vis.show_pcd(cloud)
+        if cv2.waitKey(0) & 0xFF == ord('q'):
             break
+    vis.finish()
     cv2.destroyAllWindows()
 
 
