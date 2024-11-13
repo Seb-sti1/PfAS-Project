@@ -84,16 +84,27 @@ def depth_to_pcd(image_left: ndarray, disparity: ndarray, scale: float = 1) -> o
     return pcd
 
 
-def get_stereo_image_disparity_pcd(sequence: str, stereo: Union[cv2.StereoSGBM, cv2.StereoBM]) -> Iterator[
-    Tuple[ndarray, ndarray, ndarray, o3d.geometry.PointCloud]]:
+def get_stereo_image_disparity(sequence: str, stereo: Union[cv2.StereoSGBM, cv2.StereoBM]) -> Iterator[
+    Tuple[ndarray, ndarray, ndarray]]:
     """
-
-    :param sequence:
-    :param stereo:
-    :return:
+    :param sequence: the sequence of images
+    :param stereo: the stereo algorithm to use
+    :return: an iterator on [the rectified left image, rectified right image, disparity]
     """
     for i, (rec_left, rec_right) in enumerate(load_stereo_images("rec_data", sequence)):
         disparity = get_depth_image(stereo, rec_left, rec_right)
+
+        yield rec_left, rec_right, disparity
+
+
+def get_stereo_image_disparity_pcd(sequence: str, stereo: Union[cv2.StereoSGBM, cv2.StereoBM]) -> Iterator[
+    Tuple[ndarray, ndarray, ndarray, o3d.geometry.PointCloud]]:
+    """
+    :param sequence: the sequence of images
+    :param stereo: the stereo algorithm to use
+    :return: an iterator on [the rectified left image, rectified right image, disparity, point cloud]
+    """
+    for i, (rec_left, rec_right, disparity) in enumerate(get_stereo_image_disparity(sequence, stereo)):
         pcd = depth_to_pcd(rec_left, disparity)
 
         yield rec_left, rec_right, disparity, pcd
