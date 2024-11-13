@@ -2,6 +2,7 @@ import os
 from typing import Iterator, Tuple
 
 import cv2
+import numpy as np
 import pandas
 import pandas as pd
 from numpy import ndarray
@@ -38,3 +39,18 @@ def load_labels(data_name: str, sequence_name: str) -> pd.DataFrame:
     return pandas.read_csv(os.path.join(data_location, data_name, sequence_name, "labels.txt"),
                            sep=" ",
                            names=names)
+
+
+def load_calib_matrix(matrix: str, shape: Tuple[int, ...], image: str = "00") -> np.ndarray:
+    """
+    :param matrix: eg S, S_rect
+    :param shape: the shape of the matrix
+    :param image: eg 00
+    :return:
+    """
+    with open(os.path.join(data_location, "rec_data", "calib_cam_to_cam.txt"), 'r') as f:
+        for line in f.readlines():
+            line = line.strip()
+            if line.startswith(f"{matrix}_{image}"):
+                matrix_values = list(map(float, line.split(":")[1].strip().split(" ")))
+                return np.array(matrix_values).reshape(shape)
