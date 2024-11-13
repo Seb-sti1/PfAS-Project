@@ -5,8 +5,13 @@ import numpy as np
 import open3d as o3d
 from numpy import ndarray
 
-from load import load_stereo_images
+from load import load_stereo_images, load_calib_matrix
 from viz import DynamicO3DWindow
+
+baseline = 0.54
+K = load_calib_matrix("K", (3, 3))
+P_rect = load_calib_matrix("P_rect", (3, 4))
+R_rect = load_calib_matrix("R_rect", (3, 3))
 
 
 def init_stereo(use_sgbm=True) -> Union[cv2.StereoSGBM, cv2.StereoBM]:
@@ -69,17 +74,19 @@ def depth_to_pcd(image_left: ndarray, disparity: ndarray, scale: float = 1) -> o
 
     # Perspective transformation matrix
     # TODO make sure this is the correct value
-    focal_length = (6.900000e+02 + 2.471364e+02) / 2
-    Q = np.float32([[1, 0, 0, -w / 2.0],
-                    [0, -1, 0, h / 2.0],
-                    [0, 0, 0, -focal_length],
-                    [0, 0, 1, 0]])
-
-    points_3d = cv2.reprojectImageTo3D(disparity, Q)
+    Q = np.float32([
+        [1, 0, 0, -K[0, 2]],
+        [0, -1, 0, K[1, 2]],
+        [0, 0, 0, -K[0, 0]],
+        [0, 0, 1 / baseline, 0]
+    ])
+    points = cv2.reprojectImageTo3D(disparity, Q)
     mask_map = disparity > disparity.min()
+    # TODO maybe missing a rotation: the floor is not coplanar (already tried with R_rect)
+    points = points[mask_map].astype(np.float64)
 
     pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points_3d[mask_map].astype(np.float64))
+    pcd.points = o3d.utility.Vector3dVector(points)
     pcd.colors = o3d.utility.Vector3dVector(colors[mask_map].astype(np.float64) / 255.0)
     return pcd
 
