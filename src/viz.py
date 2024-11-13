@@ -34,6 +34,15 @@ class DynamicO3DWindow:
                 self.vis.clear_geometries()
                 self.vis.add_geometry(self.cloud, reset_bounding_box=self.first)
                 self.first = False
+                # draw a plane
+                w = 50
+                h = 1.73
+                plane = o3d.geometry.TriangleMesh.create_box(width=w, height=w, depth=0.1)
+                plane.compute_vertex_normals()
+                plane.rotate(plane.get_rotation_matrix_from_xyz((np.pi / 2, 0, 0)), center=(0, 0, 0))
+                plane.translate((-w / 2, -h, -w))
+                plane.paint_uniform_color([0., 1.0, 0.])
+                self.vis.add_geometry(plane, reset_bounding_box=False)
             self.vis.poll_events()
             self.vis.update_renderer()
             time.sleep(0.01)
