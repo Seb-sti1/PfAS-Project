@@ -3,9 +3,25 @@ import numpy as np
 import open3d as o3d
 from matplotlib import pyplot as plt
 from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from tqdm import tqdm
 
 from depth import init_stereo, get_stereo_image_disparity_pcd
 from viz import DynamicO3DWindow
+
+
+def find_best_k_silhouette(X, k_list):
+    best_km = None
+    best_score = None
+    for k in tqdm(k_list):
+        km = KMeans(n_clusters=k, init='random',
+                    n_init=10, max_iter=300, tol=1e-04, random_state=0)
+        km.fit(X)
+        score = silhouette_score(X, km.labels_)
+
+        if best_km is None or score > best_score:
+            best_km, best_score = km, score
+    return best_km
 
 
 def main_bis(sequence):
@@ -50,10 +66,14 @@ def main(sequence):
     stereo = init_stereo(use_sgbm=True)
     vis = DynamicO3DWindow()
 
+    k_list = range(2, 60, 7)
     for i, (rec_left, _, disparity, pcd) in enumerate(get_stereo_image_disparity_pcd(sequence, stereo)):
-        km = KMeans(n_clusters=50, init='random',
-                    n_init=10, max_iter=300, tol=1e-04, random_state=0)
-        labels = km.fit_predict(pcd.points)
+        print(f"Size {len(pcd.points)}")
+        pcd = pcd.voxel_down_sample(voxel_size=0.1)
+        print(f"Size {len(pcd.points)}")
+
+        km = find_best_k_silhouette(pcd.points, k_list)
+        labels = km.labels_
 
         # color by label
         max_label = labels.max()
