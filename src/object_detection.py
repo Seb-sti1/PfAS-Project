@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import open3d as o3d
 from matplotlib import pyplot as plt
-from sklearn.cluster import KMeans, MeanShift
+from sklearn.cluster import KMeans
 
 from depth import init_stereo, get_stereo_image_disparity_pcd
 from viz import DynamicO3DWindow
@@ -50,33 +50,20 @@ def main(sequence):
     stereo = init_stereo(use_sgbm=True)
     vis = DynamicO3DWindow()
 
-    km = KMeans(n_clusters=50, init='random',
-                n_init=10, max_iter=300, tol=1e-04, random_state=0)
-    ms = MeanShift(bandwidth=1.5)
-    alg = "MeanShift"
-
     for i, (rec_left, _, disparity, pcd) in enumerate(get_stereo_image_disparity_pcd(sequence, stereo)):
-        sample_down_pcd = pcd.voxel_down_sample(0.5)
-
-        labels = None
-        if alg == "KMeans":
-            labels = km.fit_predict(sample_down_pcd.points)
-        elif alg == "DBSCAN":
-            labels = np.array(sample_down_pcd.cluster_dbscan(eps=0.02, min_points=10))
-        elif alg == "MeanShift":
-            labels = ms.fit_predict(sample_down_pcd.points)
+        labels = np.array(pcd.cluster_dbscan(eps=0.2, min_points=10))
 
         # color by label
         max_label = labels.max()
         colors = cmap(labels / (max_label if max_label > 0 else 1))
-        sample_down_pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+        pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
 
         # show
         cv2.imshow("left", cv2.resize(rec_left,
                                       None, fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR))
         cv2.imshow("disparity", cv2.resize(disparity / disparity.max(),
                                            None, fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR))
-        vis.show_pcd(sample_down_pcd)
+        vis.show_pcd(pcd)
         if cv2.waitKey(0) & 0xFF == ord('q'):
             break
     vis.finish()
