@@ -22,7 +22,7 @@ def load_stereo_images(data_name: str, sequence_name: str) -> Iterator[Tuple[nda
     for name in filenames:
         left_image = cv2.imread(os.path.join(seq_path, "image_02", "data", name))
         right_image = cv2.imread(os.path.join(seq_path, "image_03", "data", name))
-        yield left_image, right_image
+        yield left_image, right_image, name
 
 
 def load_labels(data_name: str, sequence_name: str) -> pd.DataFrame:
