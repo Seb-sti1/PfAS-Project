@@ -43,6 +43,9 @@ class DynamicO3DWindow:
                 plane.translate((-w / 2, -h, -w))
                 plane.paint_uniform_color([0., 1.0, 0.])
                 self.vis.add_geometry(plane, reset_bounding_box=False)
+                self.vis.add_geometry(o3d.geometry.TriangleMesh().create_coordinate_frame(1,
+                                                                                          [0., -h, 0.]),
+                                      reset_bounding_box=False)
             self.vis.poll_events()
             self.vis.update_renderer()
             time.sleep(0.01)
