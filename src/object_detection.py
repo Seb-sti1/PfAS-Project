@@ -51,7 +51,9 @@ def main(sequence):
     vis = DynamicO3DWindow()
 
     for i, (rec_left, _, disparity, pcd) in enumerate(get_stereo_image_disparity_pcd(sequence, stereo)):
-        labels = np.array(pcd.cluster_dbscan(eps=0.2, min_points=10))
+        km = KMeans(n_clusters=50, init='random',
+                    n_init=10, max_iter=300, tol=1e-04, random_state=0)
+        labels = km.fit_predict(pcd.points)
 
         # color by label
         max_label = labels.max()
