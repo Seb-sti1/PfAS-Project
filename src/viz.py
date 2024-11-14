@@ -5,8 +5,8 @@ from load import load_stereo_images, load_labels
 from ultralytics import YOLO
 
 # Load a COCO-pretrained YOLO model
-model = YOLO("yolov8n.pt")
-
+# model = YOLO("yolov8n.pt")
+model = YOLO("runs/detect/train4/weights/best.pt")
 def draw_true_labels(image, labels, colors):
     for index, row in labels.iterrows():
         top_left = (int(row["bbox_left"]), int(row["bbox_top"]))
@@ -59,8 +59,10 @@ def main(dataset= "rec_data", sequence_name="seq_02"):
         current_labels = labels_pd[labels_pd["frame"] == i]
         draw_true_labels(left_image, current_labels, colors)
         
-        cv2.imshow("left and right images", left_image)
+        cv2.imwrite(f"output/{name}_left.png", left_image)
         if cv2.waitKey(0) & 0xFF == ord('q'):
+            break
+        if i == 10:
             break
 
 if __name__ == "__main__":

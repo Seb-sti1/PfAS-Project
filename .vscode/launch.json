@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Dataset",
+            "cwd": "/work3/pnha/student_scratch/PfAS-Project",
+            "type": "python",
+            "python": "/work3/pnha/student_scratch/Envs/llm_trajectory_prediction/bin/python3",
+            "request": "launch",
+            "program": "${workspaceFolder}/PfAS-Project/src/train.py",
+            "env": {
+                "LD_LIBRARY_PATH": "/usr/local/cuda-11.7/lib64"
+            },
+            "console": "integratedTerminal"
+        },
+}
