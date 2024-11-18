@@ -104,7 +104,7 @@ def main(args=None):
     parser.add_argument("--dataset", help="The dataset",
                         choices=["rec_data", "rec_data"], default="rec_data")
     parser.add_argument("--sequence", help="The sequence",
-                        choices=["calib", "seq_01", "seq_02", "seq_03"], default="seq_01")
+                        choices=["calib", "seq_01", "seq_02", "seq_03", "seq_19"], default="seq_01")
     parser.add_argument("type", help="Choose what to show",
                         choices=["trueLabels", "rawAndRec"])
     args = parser.parse_args()
