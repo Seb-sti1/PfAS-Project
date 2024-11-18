@@ -39,9 +39,9 @@ class DynamicO3DWindow:
                 h = 1.73
                 plane = o3d.geometry.TriangleMesh.create_box(width=w, height=w, depth=0.1)
                 plane.compute_vertex_normals()
-                plane.rotate(plane.get_rotation_matrix_from_xyz((np.pi / 2, 0, 0)), center=(0, 0, 0))
-                plane.translate((-w / 2, -h, -w))
-                plane.paint_uniform_color([0., 1.0, 0.])
+                plane.rotate(plane.get_rotation_matrix_from_xyz((0, 0, 0)), center=(0, 0, 0))
+                plane.translate((-w / 2, -h, 7))
+                plane.paint_uniform_color([0.4, 0.4, 0.4])
                 self.vis.add_geometry(plane, reset_bounding_box=False)
                 self.vis.add_geometry(o3d.geometry.TriangleMesh().create_coordinate_frame(1,
                                                                                           [0., -h, 0.]),

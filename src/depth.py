@@ -87,20 +87,7 @@ def depth_to_pcd(image_left: ndarray, disparity: ndarray, scale: float = 1) -> o
     """
 
     # Perspective transformation matrix
-    # TODO make sure this is the correct value
     _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S[0, :].astype(np.uint32), R, np.array([baseline, 0., 0.]))
-    # Q = np.float32([
-    #     [1, 0, 0, -K[0, 2]],
-    #     [0, -1, 0, K[1, 2]],
-    #     [0, 0, 0, -K[0, 0]],
-    #     [0, 0, 1 / baseline, 0]
-    # ])
-
-    # x, y = np.meshgrid(np.arange(disparity.shape[0]), np.arange(disparity.shape[1]), indexing='ij')
-    # xyzw = np.stack([x.ravel(), y.ravel(), disparity.ravel(), np.ones(disparity.size)], axis=1) @ Q.T
-    #
-    # xyz = xyzw[:, :3] / xyzw[:, 3][:, np.newaxis]
-
     points = cv2.reprojectImageTo3D(disparity, Q)
 
     crop_mask = np.zeros(disparity.shape, dtype=np.bool_)
@@ -108,7 +95,6 @@ def depth_to_pcd(image_left: ndarray, disparity: ndarray, scale: float = 1) -> o
     crop_mask[150:370, 400:550] = True
     mask_map = disparity > disparity.min()
     # mask_map = np.bitwise_and(mask_map, crop_mask)
-    # TODO maybe missing a rotation: the floor is not coplanar (already tried with R_rect)
     points = points[mask_map].astype(np.float64)
 
     # colors = np.zeros_like(points)
@@ -117,6 +103,7 @@ def depth_to_pcd(image_left: ndarray, disparity: ndarray, scale: float = 1) -> o
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     pcd.colors = o3d.utility.Vector3dVector(colors[mask_map].astype(np.float64) / 255.0)
+    pcd.transform([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
     return pcd
 
 
@@ -127,7 +114,7 @@ def get_stereo_image_disparity(sequence: str, stereo: Union[cv2.StereoSGBM, cv2.
     :param stereo: the stereo algorithm to use
     :return: an iterator on [the rectified left image, rectified right image, disparity]
     """
-    for i, (rec_left, rec_right) in enumerate(load_stereo_images("raw_data", sequence)):
+    for i, (rec_left, rec_right) in enumerate(load_stereo_images("rec_data", sequence)):
         disparity = get_depth_image(stereo, rec_left, rec_right)
 
         yield rec_left, rec_right, disparity
