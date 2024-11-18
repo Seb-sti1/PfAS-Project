@@ -9,11 +9,12 @@ from load import load_stereo_images, load_calib_matrix
 from viz import DynamicO3DWindow
 
 baseline = 0.54
-S = load_calib_matrix("S", (1, 2))
+S = load_calib_matrix("S", (2,)).astype(np.uint32)
 K = load_calib_matrix("K", (3, 3))
 D = load_calib_matrix("D", (1, 5))
 R = load_calib_matrix("R", (3, 3))
 T = load_calib_matrix("T", (3, 1))
+S_rect = load_calib_matrix("S_rect", (2,)).astype(np.uint32)
 P_rect = load_calib_matrix("P_rect", (3, 4))
 R_rect = load_calib_matrix("R_rect", (3, 3))
 
@@ -87,23 +88,24 @@ def depth_to_pcd(image_left: ndarray, disparity: ndarray, scale: float = 1) -> o
     """
 
     # Perspective transformation matrix
-    _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S[0, :].astype(np.uint32), R, np.array([baseline, 0., 0.]))
+    _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S_rect, R, np.array([baseline, 0., 0.]))
     points = cv2.reprojectImageTo3D(disparity, Q)
 
     crop_mask = np.zeros(disparity.shape, dtype=np.bool_)
     crop_mask[:, :] = False
     crop_mask[150:370, 400:550] = True
     mask_map = disparity > disparity.min()
-    # mask_map = np.bitwise_and(mask_map, crop_mask)
+    mask_map = np.bitwise_and(mask_map, crop_mask)
     points = points[mask_map].astype(np.float64)
 
-    # colors = np.zeros_like(points)
-    # colors[points[:, 2] < -6.812] = [1., 0., 1.]
+    colors = colors[mask_map].astype(np.float64) / 255.0
+    # colors[points[:, 2] < -8.2] = [100, 100, 100]
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
-    pcd.colors = o3d.utility.Vector3dVector(colors[mask_map].astype(np.float64) / 255.0)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
     pcd.transform([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+
     return pcd
 
 
