@@ -9,7 +9,11 @@ from load import load_stereo_images, load_calib_matrix
 from viz import DynamicO3DWindow
 
 baseline = 0.54
+S = load_calib_matrix("S", (1, 2))
 K = load_calib_matrix("K", (3, 3))
+D = load_calib_matrix("D", (1, 5))
+R = load_calib_matrix("R", (3, 3))
+T = load_calib_matrix("T", (3, 1))
 P_rect = load_calib_matrix("P_rect", (3, 4))
 R_rect = load_calib_matrix("R_rect", (3, 3))
 
@@ -72,18 +76,43 @@ def depth_to_pcd(image_left: ndarray, disparity: ndarray, scale: float = 1) -> o
     colors = cv2.cvtColor(image_left, cv2.COLOR_BGR2RGB)
     h, w = image_left.shape[:2]
 
+    """
+    0 0 Pedestrian 0 1 0.727451 466.194319 139.161762 557.194320 332.842544 1.744482 0.520582 0.834498 -0.875495 1.374252 6.816363 0.607547
+    0 1 Pedestrian 0 0 0.612450 389.158096 150.885617 497.158096 359.917155 1.625074 0.630655 0.721248 -1.333895 1.397117 5.923950 0.404248
+    0 5 Pedestrian 0 1 1.321152 485.398585 145.273299 502.065252 200.312156 1.677151 0.446023 0.749989 -3.436733 0.602339 21.976265 1.170425
+    0 6 Pedestrian 0 1 1.662855 525.723004 137.996529 541.389670 191.857804 1.952553 0.628458 0.744739 -2.640812 0.409017 26.109648 1.565453
+    0 7 Pedestrian 0 0 1.589458 545.146393 143.123321 559.813059 190.469783 1.709764 0.597256 0.524796 -1.905936 0.357788 25.902194 1.519108
+    0 8 Pedestrian 0 0 1.443567 568.546716 145.927759 581.213382 191.540706 1.590542 0.464626 0.670820 -1.082702 0.383012 25.062125 1.403141
+    0 9 Cyclist 0 2 2.067586 505.904313 138.198030 535.341152 183.041223 1.841708 0.508194 1.607527 -3.570178 0.096495 29.949718 1.952429
+    """
+
     # Perspective transformation matrix
     # TODO make sure this is the correct value
-    Q = np.float32([
-        [1, 0, 0, -K[0, 2]],
-        [0, -1, 0, K[1, 2]],
-        [0, 0, 0, -K[0, 0]],
-        [0, 0, 1 / baseline, 0]
-    ])
+    _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S[0, :].astype(np.uint32), R, np.array([baseline, 0., 0.]))
+    # Q = np.float32([
+    #     [1, 0, 0, -K[0, 2]],
+    #     [0, -1, 0, K[1, 2]],
+    #     [0, 0, 0, -K[0, 0]],
+    #     [0, 0, 1 / baseline, 0]
+    # ])
+
+    # x, y = np.meshgrid(np.arange(disparity.shape[0]), np.arange(disparity.shape[1]), indexing='ij')
+    # xyzw = np.stack([x.ravel(), y.ravel(), disparity.ravel(), np.ones(disparity.size)], axis=1) @ Q.T
+    #
+    # xyz = xyzw[:, :3] / xyzw[:, 3][:, np.newaxis]
+
     points = cv2.reprojectImageTo3D(disparity, Q)
+
+    crop_mask = np.zeros(disparity.shape, dtype=np.bool_)
+    crop_mask[:, :] = False
+    crop_mask[150:370, 400:550] = True
     mask_map = disparity > disparity.min()
+    # mask_map = np.bitwise_and(mask_map, crop_mask)
     # TODO maybe missing a rotation: the floor is not coplanar (already tried with R_rect)
     points = points[mask_map].astype(np.float64)
+
+    # colors = np.zeros_like(points)
+    # colors[points[:, 2] < -6.812] = [1., 0., 1.]
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
@@ -98,7 +127,7 @@ def get_stereo_image_disparity(sequence: str, stereo: Union[cv2.StereoSGBM, cv2.
     :param stereo: the stereo algorithm to use
     :return: an iterator on [the rectified left image, rectified right image, disparity]
     """
-    for i, (rec_left, rec_right) in enumerate(load_stereo_images("rec_data", sequence)):
+    for i, (rec_left, rec_right) in enumerate(load_stereo_images("raw_data", sequence)):
         disparity = get_depth_image(stereo, rec_left, rec_right)
 
         yield rec_left, rec_right, disparity
