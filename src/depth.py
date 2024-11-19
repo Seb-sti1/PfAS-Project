@@ -3,9 +3,10 @@ from typing import Union, Iterator, Tuple
 import cv2
 import numpy as np
 import open3d as o3d
+from matplotlib import pyplot as plt
 from numpy import ndarray
 
-from load import load_stereo_images, load_calib_matrix
+from load import load_stereo_images, load_calib_matrix, load_labels
 from viz import DynamicO3DWindow
 
 baseline = 0.54
@@ -48,8 +49,8 @@ def init_stereo(use_sgbm=True) -> Union[cv2.StereoSGBM, cv2.StereoBM]:
         return stereo
 
 
-def get_depth_image(stereo: Union[cv2.StereoSGBM, cv2.StereoBM],
-                    image_left: ndarray, image_right: ndarray, scale: float = 1) -> ndarray:
+def get_disparity(stereo: Union[cv2.StereoSGBM, cv2.StereoBM],
+                  image_left: ndarray, image_right: ndarray, scale: float = 1) -> ndarray:
     """
     Partly from https://github.com/opencv/opencv/blob/6f8c3b13d8c2a4f79c9fc207b416095bb07f317f/samples/python/stereo_match.py#L45
 
@@ -117,9 +118,7 @@ def get_stereo_image_disparity(sequence: str, stereo: Union[cv2.StereoSGBM, cv2.
     :return: an iterator on [the rectified left image, rectified right image, disparity]
     """
     for i, (rec_left, rec_right) in enumerate(load_stereo_images("rec_data", sequence)):
-        disparity = get_depth_image(stereo, rec_left, rec_right)
-
-        yield rec_left, rec_right, disparity
+        yield rec_left, rec_right, get_disparity(stereo, rec_left, rec_right)
 
 
 def get_stereo_image_disparity_pcd(sequence: str, stereo: Union[cv2.StereoSGBM, cv2.StereoBM]) -> Iterator[
@@ -130,12 +129,76 @@ def get_stereo_image_disparity_pcd(sequence: str, stereo: Union[cv2.StereoSGBM, 
     :return: an iterator on [the rectified left image, rectified right image, disparity, point cloud]
     """
     for i, (rec_left, rec_right, disparity) in enumerate(get_stereo_image_disparity(sequence, stereo)):
-        pcd = depth_to_pcd(rec_left, disparity)
-
-        yield rec_left, rec_right, disparity, pcd
+        yield rec_left, rec_right, disparity, depth_to_pcd(rec_left, disparity)
 
 
-def main(sequence):
+def get_roi_depth(disparity: np.ndarray, roi: Tuple[int, int, int, int]):
+    disparity_roi = disparity[roi[0]:roi[1], roi[2]: roi[3]]
+    return np.median(disparity_roi)
+
+
+def test_with_ground_truth(sequence, show=False):
+    stereo = init_stereo(use_sgbm=True)
+    labels_pd = load_labels("rec_data", sequence)
+
+    colors = {"Pedestrian": (255, 0, 0),
+              "Cyclist": (0, 255, 0),
+              "Car": (0, 0, 255)}
+
+    disparity_vs_z = []
+
+    for i, (rec_left, rec_right, disparity) in enumerate(get_stereo_image_disparity(sequence, stereo)):
+        current_labels = labels_pd[labels_pd["frame"] == i]
+
+        d = disparity / disparity.max()
+        for index, row in current_labels.iterrows():
+            top_left = (int(row["bbox_left"]), int(row["bbox_top"]))
+            bot_right = (int(row["bbox_right"]), int(row["bbox_bottom"]))
+            x, y, z = row["x"], row["y"], row["z"]
+
+            if z > 10:
+                continue
+
+            depth = get_roi_depth(disparity, (top_left[1], bot_right[1], top_left[0], bot_right[0]))
+
+            if show:
+                cv2.rectangle(rec_left, top_left, bot_right, colors[row["type"]], 3)
+                cv2.putText(rec_left, F"{row['x']:.1f} {row['y']:.2f} {row['z']:.2f}",
+                            (int(top_left[0] / 2 + bot_right[0] / 2), int(top_left[1] / 2 + bot_right[1] / 2)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
+
+                cv2.putText(d, f"{depth:.2f}",
+                            (int(top_left[0] / 2 + bot_right[0] / 2), int(top_left[1] / 2 + bot_right[1] / 2)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
+
+            disparity_vs_z.append([depth, z])
+
+        if show:
+            cv2.imshow("true label left",
+                       cv2.resize(rec_left, None, fx=0.8, fy=0.8, interpolation=cv2.INTER_LINEAR))
+
+            cv2.imshow("disparity",
+                       cv2.resize(d, None, fx=0.8, fy=0.8, interpolation=cv2.INTER_LINEAR))
+            if cv2.waitKey(5) & 0xFF == ord('q'):
+                break
+
+    disparity_vs_z = np.array(disparity_vs_z)
+    outliers = np.argwhere(disparity_vs_z[:, 0] < 1 / 0.05).ravel()
+    exclude_outliers = np.argwhere(disparity_vs_z[:, 0] > 1 / 0.05).ravel()
+    inv_disparity = 1 / disparity_vs_z[:, 0]
+
+    plt.scatter(inv_disparity[exclude_outliers], disparity_vs_z[exclude_outliers, 1])
+    plt.scatter(inv_disparity[outliers], disparity_vs_z[outliers, 1], color="red")
+    p = np.polyfit(inv_disparity[exclude_outliers], disparity_vs_z[exclude_outliers, 1], 1)
+    x = np.linspace(inv_disparity[exclude_outliers].min() * 0.95, inv_disparity[exclude_outliers].max() * 1.05)
+    plt.plot(x, x * p[0] + p[1], color="green")
+    plt.plot(x, x * baseline * K[0, 0], color="yellow")
+    plt.show()
+    print(p[0], p[1])
+    print(baseline * K[0, 0])
+
+
+def show_disparity_and_pcd(sequence):
     stereo = init_stereo(use_sgbm=True)
     vis = DynamicO3DWindow()
 
@@ -160,4 +223,5 @@ def main(sequence):
 
 
 if __name__ == "__main__":
-    main("seq_01")
+    # show_disparity_and_pcd("seq_01")
+    test_with_ground_truth("seq_01")
