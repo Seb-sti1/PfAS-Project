@@ -18,6 +18,22 @@ S_rect = load_calib_matrix("S_rect", (2,)).astype(np.uint32)
 P_rect = load_calib_matrix("P_rect", (3, 4))
 R_rect = load_calib_matrix("R_rect", (3, 3))
 
+K_left = K.copy()
+K_left[0, 0], K_left[1, 1], K_left[0, 2], K_left[1, 2] = (1141.3842402339458, 1089.7571408602967,
+                                                          692.4241332450166, 254.6371451127375)
+K_right = K.copy()
+K_right[0, 0], K_right[1, 1], K_right[0, 2], K_right[1, 2] = (1039.069329198082, 1005.7148789971652,
+                                                              671.0993007717515, 320.0860329789673)
+D_left = np.array([[-0.14930549, -0.29423248, -0.00073762, -0.00716629, 0.399804]])
+D_right = np.array([[-0.45598567, 0.86893819, -0.00358078, -0.02526345, -1.18315233]])
+R = np.array([[-0.39652127, 0.2989018, -0.86800265],
+              [0.11513964, 0.95423661, 0.27599884],
+              [0.91077645, 0.0094979, -0.41279056]])
+
+T = np.array([[34.25623958],
+              [10.61752771],
+              [40.29108254]])
+
 
 def init_stereo(use_sgbm=True) -> Union[cv2.StereoSGBM, cv2.StereoBM]:
     if use_sgbm:
@@ -75,7 +91,6 @@ def depth_to_pcd(image_left: ndarray, disparity: ndarray, scale: float = 1) -> o
     if scale != 1:
         image_left = cv2.resize(image_left, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     colors = cv2.cvtColor(image_left, cv2.COLOR_BGR2RGB)
-    h, w = image_left.shape[:2]
 
     """
     0 0 Pedestrian 0 1 0.727451 466.194319 139.161762 557.194320 332.842544 1.744482 0.520582 0.834498 -0.875495 1.374252 6.816363 0.607547
@@ -88,23 +103,24 @@ def depth_to_pcd(image_left: ndarray, disparity: ndarray, scale: float = 1) -> o
     """
 
     # Perspective transformation matrix
-    _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S_rect, R, np.array([baseline, 0., 0.]))
+    _, _, _, _, Q, _, _ = cv2.stereoRectify(K_left, D_left, K_right, D_right,
+                                            S_rect, R, T)
     points = cv2.reprojectImageTo3D(disparity, Q)
 
     crop_mask = np.zeros(disparity.shape, dtype=np.bool_)
-    crop_mask[:, :] = False
-    crop_mask[150:370, 400:550] = True
+    crop_mask[:, :] = True
+    # crop_mask[150:370, 400:550] = True
     mask_map = disparity > disparity.min()
     mask_map = np.bitwise_and(mask_map, crop_mask)
     points = points[mask_map].astype(np.float64)
 
     colors = colors[mask_map].astype(np.float64) / 255.0
-    # colors[points[:, 2] < -8.2] = [100, 100, 100]
+    colors[points[:, 2] < 6.8] = [100, 100, 100]
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     pcd.colors = o3d.utility.Vector3dVector(colors)
-    pcd.transform([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    # pcd.transform([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
 
     return pcd
 
