@@ -9,7 +9,7 @@ from numpy import ndarray
 from load import load_stereo_images, load_calib_matrix, load_labels
 from viz import DynamicO3DWindow
 
-baseline = 0.54
+baseline = 0.54 * 0.6825199  # 0.68 is a coef to fix the reprojection error
 S = load_calib_matrix("S", (2,)).astype(np.uint32)
 K = load_calib_matrix("K", (3, 3))
 D = load_calib_matrix("D", (1, 5))
@@ -132,7 +132,7 @@ def get_stereo_image_disparity_pcd(sequence: str, stereo: Union[cv2.StereoSGBM, 
         yield rec_left, rec_right, disparity, depth_to_pcd(rec_left, disparity)
 
 
-def get_roi_depth(disparity: np.ndarray, min_of_disparity: float, roi: Tuple[int, int, int, int]):
+def get_roi_disparity(disparity: np.ndarray, min_of_disparity: float, roi: Tuple[int, int, int, int]):
     disparity_roi = disparity[roi[0]:roi[1], roi[2]: roi[3]]
     disparity_roi_values = disparity_roi[disparity_roi > min_of_disparity].flatten()
 
@@ -148,13 +148,17 @@ def get_roi_depth(disparity: np.ndarray, min_of_disparity: float, roi: Tuple[int
 
 def test_with_ground_truth(sequence, show=True):
     stereo = init_stereo(use_sgbm=True)
-    labels_pd = load_labels("rec_data", sequence)
+    disparity_vs_z = []  # for test purposes
 
+    # ground truth
+    labels_pd = load_labels("rec_data", sequence)
     colors = {"Pedestrian": (255, 0, 0),
               "Cyclist": (0, 255, 0),
               "Car": (0, 0, 255)}
 
-    disparity_vs_z = []
+    # project coordinate in 3D
+    _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S_rect, R_rect, np.array([-baseline, 0., 0.]))
+
     for i, (rec_left, rec_right, disparity) in enumerate(get_stereo_image_disparity(sequence, stereo)):
         current_labels = labels_pd[labels_pd["frame"] == i]
 
@@ -162,25 +166,27 @@ def test_with_ground_truth(sequence, show=True):
         for index, row in current_labels.iterrows():
             top_left = (int(row["bbox_left"]), int(row["bbox_top"]))
             bot_right = (int(row["bbox_right"]), int(row["bbox_bottom"]))
+            roi_center = (int(top_left[0] / 2 + bot_right[0] / 2), int(top_left[1] / 2 + bot_right[1] / 2))
             x, y, z = row["x"], row["y"], row["z"]
 
             if z > 10:
                 continue
 
-            depth = get_roi_depth(disparity, disparity.min(),
-                                  (top_left[1], bot_right[1], top_left[0], bot_right[0]))
+            disparity_roi = get_roi_disparity(disparity, disparity.min(),
+                                              (top_left[1], bot_right[1], top_left[0], bot_right[0]))
+            xyzw = Q @ [roi_center[0], roi_center[1], disparity_roi, 1]
+            xyz = xyzw[:3] / xyzw[3][ np.newaxis]
 
             if show:
                 cv2.rectangle(rec_left, top_left, bot_right, colors[row["type"]], 3)
+                cv2.circle(rec_left, roi_center, 20, (255, 255, 255), 5)
                 cv2.putText(rec_left, F"{row['x']:.1f} {row['y']:.2f} {row['z']:.2f}",
-                            (int(top_left[0] / 2 + bot_right[0] / 2), int(top_left[1] / 2 + bot_right[1] / 2)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
+                            roi_center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
 
-                cv2.putText(d, f"{depth:.2f}",
-                            (int(top_left[0] / 2 + bot_right[0] / 2), int(top_left[1] / 2 + bot_right[1] / 2)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
+                cv2.putText(d, f"{disparity_roi:.0f} {xyz[0]:.1f} {xyz[1]:.1f} {xyz[2]:.1f}",
+                            roi_center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
 
-            disparity_vs_z.append([depth, z])
+            disparity_vs_z.append([disparity_roi, z])
 
         if show:
             cv2.imshow("true label left",
