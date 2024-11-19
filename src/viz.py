@@ -66,7 +66,10 @@ def add_labels(images, labels, colors):
         top_left = (int(row["bbox_left"]), int(row["bbox_top"]))
         bot_right = (int(row["bbox_right"]), int(row["bbox_bottom"]))
 
-        images = cv2.rectangle(images, top_left, bot_right, colors[row["type"]], 3)
+        cv2.rectangle(images, top_left, bot_right, colors[row["type"]], 3)
+        cv2.putText(images, f"{row['x']:.1f} {row['y']:.2f} {row['z']:.2f}",
+                    (int(top_left[0] / 2 + bot_right[0] / 2), int(top_left[1] / 2 + bot_right[1] / 2)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255))
 
 
 def true_labels(dataset: str, sequence_name: str):
