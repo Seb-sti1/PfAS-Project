@@ -117,7 +117,7 @@ def get_stereo_image_disparity(sequence: str, stereo: Union[cv2.StereoSGBM, cv2.
     :param stereo: the stereo algorithm to use
     :return: an iterator on [the rectified left image, rectified right image, disparity]
     """
-    for i, (rec_left, rec_right) in enumerate(load_stereo_images("rec_data", sequence)):
+    for i, (rec_left, rec_right) in enumerate(load_stereo_images("raw_data", sequence)):
         yield rec_left, rec_right, get_disparity(stereo, rec_left, rec_right)
 
 
@@ -132,12 +132,21 @@ def get_stereo_image_disparity_pcd(sequence: str, stereo: Union[cv2.StereoSGBM, 
         yield rec_left, rec_right, disparity, depth_to_pcd(rec_left, disparity)
 
 
-def get_roi_depth(disparity: np.ndarray, roi: Tuple[int, int, int, int]):
+def get_roi_depth(disparity: np.ndarray, min_of_disparity: float, roi: Tuple[int, int, int, int]):
     disparity_roi = disparity[roi[0]:roi[1], roi[2]: roi[3]]
-    return np.median(disparity_roi)
+    disparity_roi_values = disparity_roi[disparity_roi > min_of_disparity].flatten()
+
+    hist, bin_edges = np.histogram(disparity_roi_values, bins=50)
+    peak_index = np.argmax(hist)
+    peak_value = (bin_edges[peak_index] + bin_edges[peak_index + 1]) / 2
+
+    # plt.hist(disparity_roi_values, bins=50, color='blue', edgecolor='black', alpha=0.7)
+    # plt.scatter([peak_value], [5000])
+    # plt.show()
+    return peak_value
 
 
-def test_with_ground_truth(sequence, show=False):
+def test_with_ground_truth(sequence, show=True):
     stereo = init_stereo(use_sgbm=True)
     labels_pd = load_labels("rec_data", sequence)
 
@@ -145,21 +154,26 @@ def test_with_ground_truth(sequence, show=False):
               "Cyclist": (0, 255, 0),
               "Car": (0, 0, 255)}
 
-    disparity_vs_z = []
+    map_x, map_y = cv2.initUndistortRectifyMap(K, D, R_rect, P_rect, S_rect, cv2.CV_32FC1)
+    map_x, map_y = map_x.astype(np.int32), map_y.astype(np.int32)
 
+    disparity_vs_z = []
     for i, (rec_left, rec_right, disparity) in enumerate(get_stereo_image_disparity(sequence, stereo)):
         current_labels = labels_pd[labels_pd["frame"] == i]
 
         d = disparity / disparity.max()
         for index, row in current_labels.iterrows():
-            top_left = (int(row["bbox_left"]), int(row["bbox_top"]))
-            bot_right = (int(row["bbox_right"]), int(row["bbox_bottom"]))
+            top_left = (map_x[int(row["bbox_top"]), int(row["bbox_left"])],
+                        map_y[int(row["bbox_top"]), int(row["bbox_left"])])
+            bot_right = ((map_x[int(row["bbox_bottom"]), int(row["bbox_right"])],
+                          map_y[int(row["bbox_bottom"]), int(row["bbox_right"])]))
             x, y, z = row["x"], row["y"], row["z"]
 
             if z > 10:
                 continue
 
-            depth = get_roi_depth(disparity, (top_left[1], bot_right[1], top_left[0], bot_right[0]))
+            depth = get_roi_depth(disparity, disparity.min(),
+                                  (top_left[1], bot_right[1], top_left[0], bot_right[0]))
 
             if show:
                 cv2.rectangle(rec_left, top_left, bot_right, colors[row["type"]], 3)
