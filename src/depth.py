@@ -9,7 +9,7 @@ from numpy import ndarray
 from load import load_stereo_images, load_calib_matrix, load_labels
 from viz import DynamicO3DWindow
 
-baseline = 0.54  # * 0.6825199  # 0.68 is a coef to fix the reprojection error
+baseline = 0.54 * 0.6825199  # 0.68 is a coef to fix the reprojection error
 height = 1.4
 S = load_calib_matrix("S", (2,)).astype(np.uint32)
 K = load_calib_matrix("K", (3, 3))
@@ -291,4 +291,4 @@ def show_disparity_and_pcd(sequence):
 
 if __name__ == "__main__":
     # show_disparity_and_pcd("seq_01")
-    test_with_ground_truth("seq_02")
+    test_with_ground_truth("seq_01")
