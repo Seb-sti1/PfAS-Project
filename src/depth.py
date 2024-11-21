@@ -143,26 +143,26 @@ def get_roi_disparity(disparity: np.ndarray, min_of_disparity: float, roi: Tuple
     return peak_value
 
 
-def test_with_ground_truth(sequence, show=True):
+def test_with_ground_truth(sequence, show=False):
+    # project coordinate in 3D
     stereo = init_stereo(use_sgbm=True)
-    disparity_vs_z = []  # for test purposes
-    list_xy_pixel = []
+    _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S_rect, R_rect, np.array([-baseline, 0., 0.]))
+
+    # monitoring arrays
+    disparity_vs_z = []
+    monitoring = []
+    mean_error = []
 
     # ground truth
     labels_pd = load_labels("rec_data", sequence)
     colors = {"Pedestrian": (255, 0, 0),
               "Cyclist": (0, 255, 0),
               "Car": (0, 0, 255)}
-
-    # project coordinate in 3D
-    _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S_rect, R_rect, np.array([-baseline, 0., 0.]))
-    mean_error = []
-
     for i, (rec_left, rec_right, disparity) in enumerate(get_stereo_image_disparity(sequence, stereo)):
         current_labels = labels_pd[labels_pd["frame"] == i]
 
         d = disparity / disparity.max()
-        mean_error_i = 0
+        mean_error_i = np.array([0., 0., 0.])
         for index, row in current_labels.iterrows():
             top_left = (int(row["bbox_left"]), int(row["bbox_top"]))
             bot_right = (int(row["bbox_right"]), int(row["bbox_bottom"]))
@@ -178,19 +178,18 @@ def test_with_ground_truth(sequence, show=True):
             xyz = xyzw[:3] / xyzw[3][np.newaxis]
             # xyz[1] += height
 
-            mean_error_i += np.linalg.norm(xyz - [x, y, z]) / len(current_labels)
-
+            # tracking values to show performance plots
+            print(len(current_labels))
+            mean_error_i += (xyz - [x, y, z]) / len(current_labels)
             if row["track id"] == 1:
-                list_xy_pixel.append(
+                monitoring.append(
                     [x, y, z,
                      xyz[0], xyz[1], xyz[2],
-                     roi_center[0], roi_center[1],
                      disparity_roi])
+            disparity_vs_z.append([disparity_roi, z])
 
             if show:
                 cv2.rectangle(rec_left, top_left, bot_right, colors[row["type"]], 3)
-
-            disparity_vs_z.append([disparity_roi, z])
 
         mean_error.append(mean_error_i)
         if show:
@@ -199,7 +198,7 @@ def test_with_ground_truth(sequence, show=True):
 
             cv2.imshow("disparity",
                        cv2.resize(d, None, fx=0.8, fy=0.8, interpolation=cv2.INTER_LINEAR))
-            if cv2.waitKey(5) & 0xFF == ord('q'):
+            if cv2.waitKey(0) & 0xFF == ord('q'):
                 break
 
     disparity_vs_z = np.array(disparity_vs_z)
@@ -217,25 +216,33 @@ def test_with_ground_truth(sequence, show=True):
     print(p[0], p[1])
     print(baseline * K[0, 0])
 
-    list_xy_pixel = np.array(list_xy_pixel)
-    plt.plot(list_xy_pixel[:, 0], list_xy_pixel[:, 1], label="ground truth")
-    plt.plot(list_xy_pixel[:, 3], list_xy_pixel[:, 4], label="estimated")
+    monitoring = np.array(monitoring)
+    plt.plot(monitoring[:, 3], monitoring[:, 4], label="Estimated trajectory")
+    plt.plot(monitoring[:, 0], monitoring[:, 1], label="Ground truth")
+    plt.xlabel("x (m)")
+    plt.ylabel("y (m)")
     plt.legend()
     plt.grid()
     plt.show()
 
-    plt.plot(list_xy_pixel[:, 2], label="ground truth")
-    plt.plot(list_xy_pixel[:, 5], label="estimated")
+    plt.plot(monitoring[:, 5], label="Estimated trajectory")
+    plt.plot(monitoring[:, 2], label="Ground truth")
+    plt.xlabel("Image number")
+    plt.ylabel("z (m)")
     plt.legend()
     plt.grid()
     plt.show()
 
-    plt.plot(list_xy_pixel[:, 10])
+    plt.plot(monitoring[:, 6])
     plt.grid()
     plt.show()
 
     mean_error = np.array(mean_error)
-    plt.plot(mean_error, label="mean_error")
+    plt.plot(mean_error, label=["Along x-axis",
+                                "Along y-axis",
+                                "Along z-axis"])
+    plt.xlabel("Image number")
+    plt.ylabel("Average distance from estimated to ground truth (m)")
     plt.legend()
     plt.grid()
     plt.show()
