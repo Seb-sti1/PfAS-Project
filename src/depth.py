@@ -156,10 +156,6 @@ def test_with_ground_truth(sequence, show=True):
 
     # project coordinate in 3D
     _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S_rect, R_rect, np.array([-baseline, 0., 0.]))
-    # Q = np.array([[1, 0, 0, -K[0, 2]],
-    #               [0, 1, 0, -K[1, 2]],
-    #               [0, 0, 0, K[0, 0]],
-    #               [0, 0, 1 / baseline, 0]])
     mean_error = []
 
     for i, (rec_left, rec_right, disparity) in enumerate(get_stereo_image_disparity(sequence, stereo)):
@@ -184,24 +180,15 @@ def test_with_ground_truth(sequence, show=True):
 
             mean_error_i += np.linalg.norm(xyz - [x, y, z]) / len(current_labels)
 
-            true_xyzw = np.array([x, y - height, z, 1]) * xyzw[3][np.newaxis]
-            true_jidone = np.linalg.inv(Q) @ true_xyzw
             if row["track id"] == 1:
                 list_xy_pixel.append(
                     [x, y, z,
                      xyz[0], xyz[1], xyz[2],
-                     int(true_jidone[0]), int(true_jidone[1]),
                      roi_center[0], roi_center[1],
                      disparity_roi])
 
             if show:
                 cv2.rectangle(rec_left, top_left, bot_right, colors[row["type"]], 3)
-                # cv2.circle(rec_left, roi_center, 5, (255, 0, 0), 3)
-                # cv2.circle(rec_left, (int(true_jidone[0]), int(true_jidone[1])), 5, (0, 255, 0), 3)
-                # cv2.putText(rec_left, F"{row['x']:.1f} {row['y']:.2f} {row['z']:.2f}",
-                #             roi_center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
-                # cv2.putText(d, f"{disparity_roi:.0f} {xyz[0]:.1f} {xyz[1]:.1f} {xyz[2]:.1f}",
-                #             roi_center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
 
             disparity_vs_z.append([disparity_roi, z])
 
@@ -244,12 +231,6 @@ def test_with_ground_truth(sequence, show=True):
     plt.show()
 
     plt.plot(list_xy_pixel[:, 10])
-    plt.grid()
-    plt.show()
-
-    plt.plot(list_xy_pixel[:, 6], list_xy_pixel[:, 7], label="recomputed j i")
-    plt.plot(list_xy_pixel[:, 8], list_xy_pixel[:, 9], label="center of roi")
-    plt.legend()
     plt.grid()
     plt.show()
 
