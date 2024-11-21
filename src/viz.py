@@ -1,68 +1,69 @@
-import argparse
 import cv2
 import numpy as np
-from load import load_stereo_images, load_labels
+from kalman_filter import KalmanFilter2D, update_kalman_filters
 from ultralytics import YOLO
+from load import load_stereo_images, load_labels
+from detect import detect_objects
 
-# Load a COCO-pretrained YOLO model
-# model = YOLO("yolov8n.pt")
+# Load YOLO model
 model = YOLO("runs/detect/train4/weights/best.pt")
-def draw_true_labels(image, labels, colors):
-    for index, row in labels.iterrows():
-        top_left = (int(row["bbox_left"]), int(row["bbox_top"]))
-        bot_right = (int(row["bbox_right"]), int(row["bbox_bottom"]))
-        image = cv2.rectangle(image, top_left, bot_right, colors[row["type"]], 2)
-        cv2.putText(image, str(row["type"]), (top_left[0], top_left[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[row["type"]], 1)
+# Initialize Kalman filter
+kf = KalmanFilter2D()
 
-def draw_predicted_labels(image, labels, colors):
-    for class_id, box in labels:
-        label = model.names[class_id]
-        color = colors[label]
-        x, y, w, h = box
-        draw_dashed_rectangle(image, (x, y), (x + w, y + h), color, 2)
-        cv2.putText(image, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+def draw_detections(image, detections, colors):
+                            for det in detections:
+                                class_id, x, y, w, h = det
+                                color = colors.get(class_id, (0, 255, 0))
+                                cv2.rectangle(image, (x - w // 2, y - h // 2), (x + w // 2, y + h // 2), color, 2)
+                                cv2.putText(image, model.names[class_id], (x - w // 2, y - h // 2 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
-def detect_objects(image):
-    results = model(image)
-    class_ids = []
-    boxes = []
-    for result in results:
-        for box in result.boxes:
-            class_id = int(box.cls)
-            if model.names[class_id] in ["person", "bicycle", "car"]:
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())  # Convert tensor to list first
-                boxes.append([x1, y1, x2 - x1, y2 - y1])
-                class_ids.append(class_id)
-    return [(class_ids[i], boxes[i]) for i in range(len(boxes))]
 
-def draw_dashed_rectangle(image, top_left, bot_right, color, thickness=2):
-    x1, y1 = top_left
-    x2, y2 = bot_right
-    line_type = cv2.LINE_AA
-    dash_length = 5
-
-    for i in range(x1, x2, dash_length * 2):
-        cv2.line(image, (i, y1), (min(i + dash_length, x2), y1), color, thickness, line_type)
-        cv2.line(image, (i, y2), (min(i + dash_length, x2), y2), color, thickness, line_type)
-    for i in range(y1, y2, dash_length * 2):
-        cv2.line(image, (x1, i), (x1, min(i + dash_length, y2)), color, thickness, line_type)
-        cv2.line(image, (x2, i), (x2, min(i + dash_length, y2)), color, thickness, line_type)
-
-def main(dataset= "rec_data", sequence_name="seq_02"):
+# Main tracking loop
+def main(dataset="rec_data", sequence_name="seq_02"):
     labels_pd = load_labels(dataset, sequence_name)
     colors = {"Pedestrian": (255, 255, 255), "Cyclist": (0, 0, 255), "Car": (0, 255, 0)}
-    prediction_colors = {"person": (255, 255, 255), "bicycle": (0, 0, 255), "car": (0, 255, 0)}
-    for i, (left_image, right_image, name) in enumerate(load_stereo_images(dataset, sequence_name)):
-        detections = detect_objects(left_image)
-        draw_predicted_labels(left_image, detections, prediction_colors)
-        
-        current_labels = labels_pd[labels_pd["frame"] == i]
-        draw_true_labels(left_image, current_labels, colors)
-        
-        cv2.imwrite(f"output/{name}_left.png", left_image)
-        if cv2.waitKey(0) & 0xFF == ord('q'):
+    kalman_colors = {"person": (255, 255, 255), "bicycle": (0, 0, 255), "car": (0, 255, 0)}
+
+    # Dictionary to store Kalman filters for each object
+    kalman_filters = {}
+    previous_detections = []
+
+    for frame_idx, (left_image, _, name) in enumerate(load_stereo_images(dataset, sequence_name)):
+        detections = detect_objects(model, left_image)  # YOLO detections
+        # Loop through detected objects
+        for det in detections:
+            class_id, x, y, w, h = det
+            vx, vy = 0, 0  # Initialize velocities (you may need to calculate these based on previous frames)
+            x=x+w//2
+            y=y+h//2
+            # Update Kalman filters with the new detections
+            kalman_filters = update_kalman_filters([(class_id, x, y, w, h, vx, vy)], kalman_filters)
+    
+            # Get updated position from Kalman filter
+            for obj_id, kalman_filter in kalman_filters[class_id].items():
+                x_kf, P_kf = kalman_filter.x, kalman_filter.P
+                pred_x, pred_y = int(x_kf[0, 0]-w//2), int(x_kf[3, 0]-h//2)
+                if class_id == 0:
+                    print(f"Image: {frame_idx }, Number of people detected by Kalman filter: {len(kalman_filters[class_id])}")
+                elif class_id == 1:
+                    print(f"Image: {frame_idx },Number of bicycles detected by Kalman filter: {len(kalman_filters[class_id])}")
+                elif class_id == 2:
+                    print(f"Image: {frame_idx },Number of cars detected by Kalman filter: {len(kalman_filters[class_id])}")
+                # Draw the predicted position
+                draw_detections(left_image, [(class_id, pred_x, pred_y, w, h)], kalman_colors)
+    
+        # Save or display frame
+        cv2.imwrite(f"output2/{name}_left.png", left_image)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-        if i == 10:
+        if frame_idx == 100:
+            break
+
+        # Save or display frame
+        cv2.imwrite(f"output2/{name}_left.png", left_image)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        if frame_idx == 100:
             break
 
 if __name__ == "__main__":
