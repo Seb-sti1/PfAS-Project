@@ -201,8 +201,9 @@ def test_with_ground_truth(sequence, show=False):
                 break
 
     disparity_vs_z = np.array(disparity_vs_z)
-    outliers = np.argwhere((1 / 0.01 <= disparity_vs_z[:, 0]) & (disparity_vs_z[:, 0] <= 1 / 0.028)).ravel()
-    exclude_outliers = np.argwhere((disparity_vs_z[:, 0] > 1) / 0.028 | (disparity_vs_z[:, 0] < 1 / 0.01)).ravel()
+    min_d, max_d = 1 / 0.028, 1 / 0.014
+    outliers = np.argwhere((disparity_vs_z[:, 0] > max_d) | (disparity_vs_z[:, 0] < min_d)).ravel()
+    exclude_outliers = np.argwhere((min_d <= disparity_vs_z[:, 0]) & (disparity_vs_z[:, 0] <= max_d)).ravel()
     inv_disparity = 1 / disparity_vs_z[:, 0]
 
     fig = plt.figure()
