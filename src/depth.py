@@ -9,7 +9,8 @@ from numpy import ndarray
 from load import load_stereo_images, load_calib_matrix, load_labels
 from viz import DynamicO3DWindow
 
-baseline = 0.54 * 0.6825199  # 0.68 is a coef to fix the reprojection error
+baseline = 0.54  # * 0.6825199  # 0.68 is a coef to fix the reprojection error
+height = 1.4
 S = load_calib_matrix("S", (2,)).astype(np.uint32)
 K = load_calib_matrix("K", (3, 3))
 D = load_calib_matrix("D", (1, 5))
@@ -125,12 +126,19 @@ def get_roi_disparity(disparity: np.ndarray, min_of_disparity: float, roi: Tuple
     disparity_roi = disparity[roi[0]:roi[1], roi[2]: roi[3]]
     disparity_roi_values = disparity_roi[disparity_roi > min_of_disparity].flatten()
 
-    hist, bin_edges = np.histogram(disparity_roi_values, bins=50)
+    hist, bin_edges = np.histogram(disparity_roi_values, bins=30)
     peak_index = np.argmax(hist)
     peak_value = (bin_edges[peak_index] + bin_edges[peak_index + 1]) / 2
+    # TODO try a (weight) average of the value close to the peak
 
+    # plt.gray()
+    # plt.imshow(disparity_roi/disparity.max())
+    # plt.show()
+    #
     # plt.hist(disparity_roi_values, bins=50, color='blue', edgecolor='black', alpha=0.7)
     # plt.scatter([peak_value], [5000])
+    # plt.xlabel("disparity (pixel)")
+    # plt.ylabel("count")
     # plt.show()
     return peak_value
 
@@ -138,6 +146,7 @@ def get_roi_disparity(disparity: np.ndarray, min_of_disparity: float, roi: Tuple
 def test_with_ground_truth(sequence, show=True):
     stereo = init_stereo(use_sgbm=True)
     disparity_vs_z = []  # for test purposes
+    list_xy_pixel = []
 
     # ground truth
     labels_pd = load_labels("rec_data", sequence)
@@ -147,11 +156,17 @@ def test_with_ground_truth(sequence, show=True):
 
     # project coordinate in 3D
     _, _, _, _, Q, _, _ = cv2.stereoRectify(K, D, K, D, S_rect, R_rect, np.array([-baseline, 0., 0.]))
+    # Q = np.array([[1, 0, 0, -K[0, 2]],
+    #               [0, 1, 0, -K[1, 2]],
+    #               [0, 0, 0, K[0, 0]],
+    #               [0, 0, 1 / baseline, 0]])
+    mean_error = []
 
     for i, (rec_left, rec_right, disparity) in enumerate(get_stereo_image_disparity(sequence, stereo)):
         current_labels = labels_pd[labels_pd["frame"] == i]
 
         d = disparity / disparity.max()
+        mean_error_i = 0
         for index, row in current_labels.iterrows():
             top_left = (int(row["bbox_left"]), int(row["bbox_top"]))
             bot_right = (int(row["bbox_right"]), int(row["bbox_bottom"]))
@@ -164,19 +179,33 @@ def test_with_ground_truth(sequence, show=True):
             disparity_roi = get_roi_disparity(disparity, disparity.min(),
                                               (top_left[1], bot_right[1], top_left[0], bot_right[0]))
             xyzw = Q @ [roi_center[0], roi_center[1], disparity_roi, 1]
-            xyz = xyzw[:3] / xyzw[3][ np.newaxis]
+            xyz = xyzw[:3] / xyzw[3][np.newaxis]
+            # xyz[1] += height
+
+            mean_error_i += np.linalg.norm(xyz - [x, y, z]) / len(current_labels)
+
+            true_xyzw = np.array([x, y - height, z, 1]) * xyzw[3][np.newaxis]
+            true_jidone = np.linalg.inv(Q) @ true_xyzw
+            if row["track id"] == 1:
+                list_xy_pixel.append(
+                    [x, y, z,
+                     xyz[0], xyz[1], xyz[2],
+                     int(true_jidone[0]), int(true_jidone[1]),
+                     roi_center[0], roi_center[1],
+                     disparity_roi])
 
             if show:
                 cv2.rectangle(rec_left, top_left, bot_right, colors[row["type"]], 3)
-                cv2.circle(rec_left, roi_center, 20, (255, 255, 255), 5)
-                cv2.putText(rec_left, F"{row['x']:.1f} {row['y']:.2f} {row['z']:.2f}",
-                            roi_center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
-
-                cv2.putText(d, f"{disparity_roi:.0f} {xyz[0]:.1f} {xyz[1]:.1f} {xyz[2]:.1f}",
-                            roi_center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
+                # cv2.circle(rec_left, roi_center, 5, (255, 0, 0), 3)
+                # cv2.circle(rec_left, (int(true_jidone[0]), int(true_jidone[1])), 5, (0, 255, 0), 3)
+                # cv2.putText(rec_left, F"{row['x']:.1f} {row['y']:.2f} {row['z']:.2f}",
+                #             roi_center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
+                # cv2.putText(d, f"{disparity_roi:.0f} {xyz[0]:.1f} {xyz[1]:.1f} {xyz[2]:.1f}",
+                #             roi_center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255))
 
             disparity_vs_z.append([disparity_roi, z])
 
+        mean_error.append(mean_error_i)
         if show:
             cv2.imshow("true label left",
                        cv2.resize(rec_left, None, fx=0.8, fy=0.8, interpolation=cv2.INTER_LINEAR))
@@ -200,6 +229,35 @@ def test_with_ground_truth(sequence, show=True):
     plt.show()
     print(p[0], p[1])
     print(baseline * K[0, 0])
+
+    list_xy_pixel = np.array(list_xy_pixel)
+    plt.plot(list_xy_pixel[:, 0], list_xy_pixel[:, 1], label="ground truth")
+    plt.plot(list_xy_pixel[:, 3], list_xy_pixel[:, 4], label="estimated")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    plt.plot(list_xy_pixel[:, 2], label="ground truth")
+    plt.plot(list_xy_pixel[:, 5], label="estimated")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    plt.plot(list_xy_pixel[:, 10])
+    plt.grid()
+    plt.show()
+
+    plt.plot(list_xy_pixel[:, 6], list_xy_pixel[:, 7], label="recomputed j i")
+    plt.plot(list_xy_pixel[:, 8], list_xy_pixel[:, 9], label="center of roi")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    mean_error = np.array(mean_error)
+    plt.plot(mean_error, label="mean_error")
+    plt.legend()
+    plt.grid()
+    plt.show()
 
 
 def show_disparity_and_pcd(sequence):
