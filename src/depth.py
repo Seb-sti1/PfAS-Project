@@ -179,8 +179,7 @@ def test_with_ground_truth(sequence, show=False):
             # xyz[1] += height
 
             # tracking values to show performance plots
-            print(len(current_labels))
-            mean_error_i += (xyz - [x, y, z]) / len(current_labels)
+            mean_error_i += abs(xyz - [x, y, z]) / len(current_labels)
             if row["track id"] == 1:
                 monitoring.append(
                     [x, y, z,
@@ -202,41 +201,27 @@ def test_with_ground_truth(sequence, show=False):
                 break
 
     disparity_vs_z = np.array(disparity_vs_z)
-    outliers = np.argwhere(disparity_vs_z[:, 0] < 1 / 0.05).ravel()
-    exclude_outliers = np.argwhere(disparity_vs_z[:, 0] > 1 / 0.05).ravel()
+    outliers = np.argwhere((1 / 0.01 <= disparity_vs_z[:, 0]) & (disparity_vs_z[:, 0] <= 1 / 0.028)).ravel()
+    exclude_outliers = np.argwhere((disparity_vs_z[:, 0] > 1) / 0.028 | (disparity_vs_z[:, 0] < 1 / 0.01)).ravel()
     inv_disparity = 1 / disparity_vs_z[:, 0]
 
-    plt.scatter(inv_disparity[exclude_outliers], disparity_vs_z[exclude_outliers, 1])
-    plt.scatter(inv_disparity[outliers], disparity_vs_z[outliers, 1], color="red")
+    fig = plt.figure()
+    plt.scatter(inv_disparity[exclude_outliers], disparity_vs_z[exclude_outliers, 1], label="Data points", s=3)
+    plt.scatter(inv_disparity[outliers], disparity_vs_z[outliers, 1], color="red", label="Outliers", s=3)
     p = np.polyfit(inv_disparity[exclude_outliers], disparity_vs_z[exclude_outliers, 1], 1)
     x = np.linspace(inv_disparity[exclude_outliers].min() * 0.95, inv_disparity[exclude_outliers].max() * 1.05)
-    plt.plot(x, x * p[0] + p[1], color="green")
-    plt.plot(x, x * baseline * K[0, 0], color="yellow")
+    plt.plot(x, x * p[0] + p[1], color="green", label="Fitted line")
+    plt.plot(x, x * baseline * K[0, 0], color="yellow", label="Expected line")
+    plt.ylabel("z (m)")
+    plt.xlabel("Inverse of the disparity (1/pixels)")
+    plt.legend()
+    plt.grid()
+    fig.tight_layout()
     plt.show()
     print(p[0], p[1])
     print(baseline * K[0, 0])
 
-    monitoring = np.array(monitoring)
-    plt.plot(monitoring[:, 3], monitoring[:, 4], label="Estimated trajectory")
-    plt.plot(monitoring[:, 0], monitoring[:, 1], label="Ground truth")
-    plt.xlabel("x (m)")
-    plt.ylabel("y (m)")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-    plt.plot(monitoring[:, 5], label="Estimated trajectory")
-    plt.plot(monitoring[:, 2], label="Ground truth")
-    plt.xlabel("Image number")
-    plt.ylabel("z (m)")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-    plt.plot(monitoring[:, 6])
-    plt.grid()
-    plt.show()
-
+    fig = plt.figure()
     mean_error = np.array(mean_error)
     plt.plot(mean_error, label=["Along x-axis",
                                 "Along y-axis",
@@ -245,6 +230,37 @@ def test_with_ground_truth(sequence, show=False):
     plt.ylabel("Average distance from estimated to ground truth (m)")
     plt.legend()
     plt.grid()
+    plt.ylim([0, mean_error.max() * 1.05])
+    plt.xlim([0, mean_error.shape[0] - 1])
+    fig.tight_layout()
+    plt.show()
+
+    fig = plt.figure()
+    monitoring = np.array(monitoring)
+    plt.plot(monitoring[:, 3], monitoring[:, 4], label="Estimated trajectory")
+    plt.plot(monitoring[:, 0], monitoring[:, 1], label="Ground truth")
+    plt.xlabel("x (m)")
+    plt.ylabel("y (m)")
+    plt.legend()
+    plt.grid()
+    fig.tight_layout()
+    plt.show()
+
+    fig = plt.figure()
+    plt.plot(monitoring[:, 5], label="Estimated trajectory")
+    plt.plot(monitoring[:, 2], label="Ground truth")
+    plt.xlabel("Image number")
+    plt.ylabel("z (m)")
+    plt.xlim([0, monitoring.shape[0] - 1])
+    plt.legend()
+    plt.grid()
+    fig.tight_layout()
+    plt.show()
+
+    fig = plt.figure()
+    plt.plot(monitoring[:, 6])
+    plt.grid()
+    fig.tight_layout()
     plt.show()
 
 
@@ -274,4 +290,4 @@ def show_disparity_and_pcd(sequence):
 
 if __name__ == "__main__":
     # show_disparity_and_pcd("seq_01")
-    test_with_ground_truth("seq_01")
+    test_with_ground_truth("seq_02")
