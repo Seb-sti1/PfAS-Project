@@ -28,7 +28,7 @@ def main(dataset="rec_data", sequence_name="seq_02"):
     kf_manager = KalmanFilterManager()
 
     initial_pred= True
-    for frame_idx, (left_image, _, name) in enumerate(load_stereo_images(dataset, sequence_name)):
+    for frame_idx, (left_image, _) in enumerate(load_stereo_images(dataset, sequence_name)):
         detections = detect_objects(model, left_image)  # YOLO detections
 
         # Loop through detected objects
@@ -53,7 +53,7 @@ def main(dataset="rec_data", sequence_name="seq_02"):
               
     
         # Save or display frame
-        cv2.imwrite(f"output2/{name}_left.png", left_image)
+        cv2.imwrite(f"output2/{frame_idx}_left.png", left_image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
         if frame_idx == 100:

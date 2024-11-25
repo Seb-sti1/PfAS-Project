@@ -13,7 +13,7 @@ class KalmanFilter2D:
                             [0, 0, 1, 0, 0, 0]]) # y_prev_pos
             self.H = np.array([[1, 0, 0, 0, 0, 0],  # Measurement matrix
                             [0, 0, 1, 0, 0, 0]])
-            self.R = np.eye(2) * 10
+            self.R = np.eye(2) * 1000
             self.I = np.eye(6)  # Identity matrix
         else:
             self.F = np.array([[1, dt, 0, 0],  # x_pos
