@@ -143,6 +143,13 @@ def get_roi_disparity(disparity: np.ndarray, min_of_disparity: float, roi: Tuple
     return peak_value
 
 
+def get_roi_xyz(disparity: np.ndarray, roi: Tuple[int, int, int, int], Q: np.ndarray):
+    disparity_roi = get_roi_disparity(disparity, disparity.min(), roi)
+    roi_center = (int(roi[2] / 2 + roi[3] / 2), int(roi[1] / 2 + roi[1] / 2))
+    xyzw = Q @ [roi_center[0], roi_center[1], disparity_roi, 1]
+    return xyzw[:3] / xyzw[3][np.newaxis]
+
+
 def test_with_ground_truth(sequence, show=False):
     # project coordinate in 3D
     stereo = init_stereo(use_sgbm=True)
