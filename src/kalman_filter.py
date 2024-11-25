@@ -1,25 +1,41 @@
 import numpy as np
 import cv2
-
+with_prev=True
 class KalmanFilter2D:
-    def __init__(self, dt=1/25):
+    def __init__(self, dt=1/10):
         self.dt = dt
-        self.F = np.array([[1, dt, 0.5 * dt**2, 0, 0, 0],  # State transition matrix
-                           [0, 1, dt, 0, 0, 0],
-                           [0, 0, 1, 0, 0, 0],
-                           [0, 0, 0, 1, dt, 0.5 * dt**2],
-                           [0, 0, 0, 0, 1, dt],
-                           [0, 0, 0, 0, 0, 1]])
-        self.H = np.array([[1, 0, 0, 0, 0, 0],  # Measurement matrix
-                           [0, 0, 0, 1, 0, 0]])
-        self.R = np.array([[10, 0],  # Measurement noise covariance
-                           [0, 10]])
-        self.I = np.eye(6)  # Identity matrix
+        if with_prev:
+            self.F = np.array([[1, dt, 0, 0, 0, 0],  # x_pos
+                            [1, 0, 0, 0, -1, 0],  # x_vel
+                            [0, 0, 1, dt, 0 , 0], # y_pos
+                            [0, 0, 1, 0, 0, -1],  # y_vel
+                            [1, 0, 0, 0, 0, 0],  # x_prev_pos
+                            [0, 0, 0, 0, 0, 1]]) # y_prev_pos
+            self.H = np.array([[1, 0, 0, 0, 0, 0],  # Measurement matrix
+                            [0, 0, 1, 0, 0, 0]])
+            self.R = np.eye(2) * 10
+            self.I = np.eye(6)  # Identity matrix
+        else:
+            self.F = np.array([[1, dt, 0, 0],  # x_pos
+                            [0, 1, 0, 0],  # x_vel
+                            [0, 0, 1, dt], # y_pos
+                            [0, 0, 0, 0]])  # y_vel
+            self.H = np.array([[1, 0, 0, 0],  # Measurement matrix
+                            [0, 0, 1, 0]])
+            self.R = np.eye(2) * 1
+            self.I = np.eye(4)  # Identity matrix
 
-    def initialize(self):
-        x = np.zeros((6, 1))  # Initial state [x, vx, ax, y, vy, ay]
-        P = np.eye(6) * 1000  # Initial state covariance
-        return x, P
+    def initialize(self, x_pos = 0, y_pos = 0):
+        if with_prev:
+            x = np.zeros((6, 1))  # Initial state [x, vx, y, vy, x_prev, y_prev]
+            x = np.array([[x_pos], [0], [y_pos], [0], [x_pos], [y_pos]])  # Initial state
+            P = np.eye(6) * 1000 # Initial state covariance
+            return x, P
+        else:
+            x = np.zeros((4, 1))  # Initial state [x, vx, y, vy, x_prev, y_prev]
+            x = np.array([[x_pos], [0], [y_pos], [0]])  # Initial state
+            P = np.eye(4) * 10000  # Initial state covariance
+            return x, P
 
     def update(self, x, P, Z):
         y = Z - np.dot(self.H, x)  # Measurement residual
@@ -31,60 +47,83 @@ class KalmanFilter2D:
 
     def predict(self, x, P, u=None):
         if u is None:
-            u = np.zeros((6, 1))  # No external motion by default
+            if with_prev:
+                u = np.zeros((6, 1))
+            else:
+                u = np.zeros((4, 1))  # No external motion by default
         x = np.dot(self.F, x) + u  # Predicted state
         P = np.dot(self.F, np.dot(P, self.F.T))  # Predicted covariance
         return x, P
-
-def is_same_object(kf, x_kf, x, y, vx, vy, class_id, position_threshold=200, velocity_threshold=5):
-    pred_x, pred_y = x_kf[0, 0], x_kf[3, 0]
-    pred_vx, pred_vy = x_kf[1, 0], x_kf[4, 0]
     
-    position_distance = np.sqrt((pred_x - x)**2 + (pred_y - y)**2)
-    velocity_distance = np.sqrt((pred_vx - vx)**2 + (pred_vy - vy)**2)
+class KalmanFilterManager:
+    def __init__(self):
+        self.kalman_filters = {}
+
+    def initialize_filters(self, detections):
+            for det in detections:
+                class_id, x, y, w, h = det
+                if class_id not in self.kalman_filters:
+                    self.kalman_filters[class_id] = {}
+                obj_id = f"{class_id}_{len(self.kalman_filters[class_id])}"
+                kf = KalmanFilter2D()
+                kf.x, kf.P = kf.initialize(x, y)
+                self.kalman_filters[class_id][obj_id] = kf
+
+    def update(self, detections):
+        for class_id, filters in self.kalman_filters.items():
+            can_continue = False
+            for detection in detections:
+                if detection[0] == class_id:
+                    can_continue = True
+                    break
+            if not can_continue:
+                continue
+
+            # Get predictions
+            predictions = {}
+            for obj_id, kf in filters.items():
+                kf.x, kf.P = kf.predict(kf.x, kf.P)
+                predictions[obj_id] = kf.x
+
+            # Pair predictions with closest measurements
+            measurements = []
+            for det in detections:
+                if det[0] == class_id:
+                    x, y = det[1], det[2]
+                    measurements.append((x, y))
+            if len(measurements) == 0:
+                continue
+
+            for obj_id, pred in predictions.items():
+                pred_x, pred_y = pred[0, 0], pred[2, 0]
+                if len(measurements) == 0: # if we dont find a measurement for a prediction, we dont update the prediction
+                    break
+                closest_measurement = min(measurements, key=lambda m: np.linalg.norm((pred_x - m[0], pred_y - m[1])))
+                measurements.remove(closest_measurement)
+                z_kf = np.array([[closest_measurement[0]], [closest_measurement[1]]])
+                kf = filters[obj_id]
+                kf.x, kf.P = kf.update(kf.x, kf.P, z_kf)
+                print("updated")
+
+    def predict(self):
+        predictions = {}
+        for class_id, filters in self.kalman_filters.items():
+            predictions[class_id] = {}
+            for obj_id, kf in filters.items():
+                kf.x, kf.P = kf.predict(kf.x, kf.P)
+                predictions[class_id][obj_id] = kf.x
+        return predictions
+
+    def get_class_counts(self):
+        class_counts = {class_id: len(filters) for class_id, filters in self.kalman_filters.items()}
+        return class_counts
     
-    # return position_distance < position_threshold and velocity_distance < velocity_threshold
-    return position_distance < position_threshold
-
-def update_kalman_filters(detections, kalman_filters):
-    for det in detections:
-        class_id, x, y, w, h, vx, vy = det
-
-        # Check if the detection matches any existing object
-        matched = False
-        for obj_id, kf in kalman_filters.get(class_id, {}).items():
-            x_kf, P_kf = kf.predict(kf.x, kf.P)
-            if is_same_object(kf, x_kf, x, y, vx, vy, class_id):
-                # Update existing Kalman filter
-                z_kf = np.array([[x], [y]])
-                kf.x, kf.P = kf.update(x_kf, P_kf, z_kf)
-                matched = True
-                break
-
-        if not matched:
-            # Initialize Kalman filter for new objects
-            if class_id not in kalman_filters:
-                kalman_filters[class_id] = {}
-            obj_id = f"{class_id}_{len(kalman_filters[class_id])}"
-            kf = KalmanFilter2D()
-            kf.x, kf.P = kf.initialize()
-            kalman_filters[class_id][obj_id] = kf
-
-            # Update with detection
-            z_kf = np.array([[x], [y]])
-            kf.x, kf.P = kf.update(kf.x, kf.P, z_kf)
-
-    return kalman_filters
-
-# Example usage:
-kf = KalmanFilter2D()
-kalman_filters = {}
-detections = [
-    (0, 100, 200, 50, 100, 5, 5),
-    (0, 105, 205, 50, 100, 5, 5),
-    (1, 300, 400, 100, 200, 5, 5),
-    (1, 305, 405, 100, 200, 5, 5)
-]
-
-kalman_filters = update_kalman_filters(detections, kalman_filters)
-print(kalman_filters)
+    def get_predictions_list(self):
+        result = []
+        predictions = self.predict()
+        for class_id, filters in predictions.items():
+            for obj_id, state in filters.items():
+                x, y = int(state[0, 0]), int(state[2, 0])
+                w, h = 20, 20  # Assuming width and height are not tracked
+                result.append([class_id, x, y, w, h])
+        return result
