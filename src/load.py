@@ -1,5 +1,5 @@
 import os
-from typing import Iterator, Tuple
+from typing import Iterator, Tuple, Optional
 
 import cv2
 import numpy as np
@@ -10,7 +10,7 @@ from numpy import ndarray
 data_location = os.path.join(os.path.dirname(__file__), "..")
 
 
-def load_stereo_images(data_name: str, sequence_name: str) -> Iterator[Tuple[ndarray, ndarray]]:
+def load_stereo_images(data_name: str, sequence_name: str) -> Iterator[Tuple[Optional[ndarray], Optional[ndarray]]]:
     """
     Load the left and right images for a given dataset (raw_data or rec_data) and sequence (calib, seq_01, seq_02, seq_03)
     :param data_name: either raw_data or rec_data
@@ -20,8 +20,14 @@ def load_stereo_images(data_name: str, sequence_name: str) -> Iterator[Tuple[nda
     seq_path = os.path.join(data_location, data_name, sequence_name)
     filenames = sorted([filename for filename in os.listdir(os.path.join(seq_path, "image_02", "data"))])
     for name in filenames:
-        left_image = cv2.imread(os.path.join(seq_path, "image_02", "data", name))
-        right_image = cv2.imread(os.path.join(seq_path, "image_03", "data", name))
+        left_path = os.path.join(seq_path, "image_02", "data", name)
+        right_path = os.path.join(seq_path, "image_03", "data", name)
+        left_image = None
+        right_image = None
+        if os.path.exists(left_path):
+            left_image = cv2.imread(left_path)
+        if os.path.exists(right_path):
+            right_image = cv2.imread(right_path)
         yield left_image, right_image
 
 
