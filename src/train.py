@@ -14,15 +14,13 @@ data_location = os.path.join(os.path.dirname(__file__), "..")
 
 def prepare_yolo_dataset(data_name, sequence_name):
     labels_pd = load_labels(data_name, sequence_name)
-    images_dir = os.path.join(data_location, data_name, sequence_name, "image_03", "data")
     yolo_images_dir = os.path.join(data_location, data_name, sequence_name, "yolo", "images")
     yolo_labels_dir = os.path.join(data_location, data_name, sequence_name, "yolo", "labels")
     
     os.makedirs(yolo_images_dir, exist_ok=True)
     os.makedirs(yolo_labels_dir, exist_ok=True)
     
-    for i, (left_image, right_image, path) in enumerate(load_stereo_images(data_name, sequence_name)):
-        image_path = os.path.join(images_dir, f"{i:06d}.jpg")
+    for i, (left_image, _) in enumerate(load_stereo_images(data_name, sequence_name)):
         yolo_image_path = os.path.join(yolo_images_dir, f"{i:06d}.jpg")
         cv2.imwrite(yolo_image_path, left_image)
         
@@ -64,8 +62,8 @@ def train_model_on_sequence(data_name, sequence_name):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", help="The dataset", choices=["raw_data", "rec_data"], default="rec_data")
-    parser.add_argument("--sequence", help="The sequence", choices=["seq_01", "seq_02", "seq_03"], default="seq_02")
+    parser.add_argument("--dataset", help="The dataset", choices=["rec_data"], default="rec_data")
+    parser.add_argument("--sequence", help="The sequence", choices=["seq_19"], default="seq_19")
     args = parser.parse_args()
 
     train_model_on_sequence(args.dataset, args.sequence)
