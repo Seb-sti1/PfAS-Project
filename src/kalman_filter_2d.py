@@ -1,41 +1,22 @@
 import numpy as np
 import cv2
-with_prev=True
 class KalmanFilter2D:
     def __init__(self, dt=1):
         self.dt = dt
-        if with_prev:
-            self.F = np.array([[1, dt, 0, 0, 0, 0],  # x_pos
-                            [1, 0, 0, 0, -1, 0],  # x_vel
-                            [0, 0, 1, dt, 0 , 0], # y_pos
-                            [0, 0, 1, 0, 0, -1],  # y_vel
-                            [1, 0, 0, 0, 0, 0],  # x_prev_pos
-                            [0, 0, 1, 0, 0, 0]]) # y_prev_pos
-            self.H = np.array([[1, 0, 0, 0, 0, 0],  # Measurement matrix
-                            [0, 0, 1, 0, 0, 0]])
-            self.R = np.eye(2) * 1000
-            self.I = np.eye(6)  # Identity matrix
-        else:
-            self.F = np.array([[1, dt, 0, 0],  # x_pos
-                            [0, 1, 0, 0],  # x_vel
-                            [0, 0, 1, dt], # y_pos
-                            [0, 0, 0, 0]])  # y_vel
-            self.H = np.array([[1, 0, 0, 0],  # Measurement matrix
-                            [0, 0, 1, 0]])
-            self.R = np.eye(2) * 1000
-            self.I = np.eye(4)  # Identity matrix
+        self.F = np.array([[1, dt, 0, 0],  # x_pos
+                        [0, 1, 0, 0],  # x_vel
+                        [0, 0, 1, dt], # y_pos
+                        [0, 0, 0, 1]])  # y_vel
+        self.H = np.array([[1, 0, 0, 0],  # Measurement matrix
+                        [0, 0, 1, 0]])
+        self.R = np.eye(2) * 1000
+        self.I = np.eye(4)  # Identity matrix
 
     def initialize(self, x_pos = 0, y_pos = 0):
-        if with_prev:
-            x = np.zeros((6, 1))  # Initial state [x, vx, y, vy, x_prev, y_prev]
-            x = np.array([[x_pos], [0], [y_pos], [0], [x_pos], [y_pos]])  # Initial state
-            P = np.eye(6) * 1000 # Initial state covariance
-            return x, P
-        else:
-            x = np.zeros((4, 1))  # Initial state [x, vx, y, vy, x_prev, y_prev]
-            x = np.array([[x_pos], [0], [y_pos], [0]])  # Initial state
-            P = np.eye(4) * 1000  # Initial state covariance
-            return x, P
+        x = np.zeros((4, 1))  # Initial state [x, vx, y, vy, x_prev, y_prev]
+        x = np.array([[x_pos], [0], [y_pos], [0]])  # Initial state
+        P = np.eye(4) * 1000  # Initial state covariance
+        return x, P
 
     def update(self, x, P, Z):
         y = Z - np.dot(self.H, x)  # Measurement residual
@@ -47,10 +28,7 @@ class KalmanFilter2D:
 
     def predict(self, x, P, u=None):
         if u is None:
-            if with_prev:
-                u = np.zeros((6, 1))
-            else:
-                u = np.zeros((4, 1))  # No external motion by default
+            u = np.zeros((4, 1))  # No external motion by default
         x = np.dot(self.F, x) + u  # Predicted state
         P = np.dot(self.F, np.dot(P, self.F.T))  # Predicted covariance
         return x, P
