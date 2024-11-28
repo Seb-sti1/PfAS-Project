@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from kalman_filter import KalmanFilterManager
+from kalman_filter_z import KalmanFilterManager
 from ultralytics import YOLO
 from load import load_stereo_images, load_labels
 from detect import detect_objects
@@ -12,7 +12,7 @@ model = YOLO("runs/detect/train4/weights/best.pt")
 
 def draw_detections(image, detections, colors):
                             for det in detections:
-                                class_id, x_center, y_center, w, h = det
+                                class_id, x_center, y_center, z,  w, h = det
                                 color = colors.get(class_id, (0, 255, 0))
                                 cv2.rectangle(image, (x_center - w // 2, y_center - h // 2), (x_center + w // 2, y_center + h // 2), color, 2)
                                 cv2.putText(image, model.names[class_id], (x_center - w // 2, y_center - h // 2 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
@@ -30,7 +30,7 @@ def main(dataset="rec_data", sequence_name="seq_02"):
     initial_pred= True
     for frame_idx, (left_image, _) in enumerate(load_stereo_images(dataset, sequence_name)):
         detections = detect_objects(model, left_image)  # YOLO detections
-
+        detections = [list(det[:3]) + [0] for det in detections]
         # Loop through detected objects
         if initial_pred:
             kf_manager.initialize_filters(detections)
@@ -53,7 +53,7 @@ def main(dataset="rec_data", sequence_name="seq_02"):
               
     
         # Save or display frame
-        cv2.imwrite(f"output2/{frame_idx}_left.png", left_image)
+        cv2.imwrite(f"output_2d_viz_xyz/{frame_idx}_left.png", left_image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
         if frame_idx == 100:
